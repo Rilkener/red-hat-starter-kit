@@ -1,0 +1,3 @@
+[MESSAGES CONTROL]
+# Блокировка всех сообщений от линтера питона
+disable=C, F, I, R, W, E
