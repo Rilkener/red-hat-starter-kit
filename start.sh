@@ -62,40 +62,18 @@ if [ "$(whoami)" = root ]; then
         check_yes_no 'dnf -q -y install phpmyadmin'
     fi
 
-#---------------------------------------
-# MongoDB 7.0 (официальный репозиторий, EL8/EL9)
-#---------------------------------------
-if check_yes_no 'echo "Добавить официальный репозиторий MongoDB 7.0?"'; then
-    if [[ "$RHEL_MAJOR" = "9" ]]; then
-        cat >/etc/yum.repos.d/mongodb-org-7.0.repo <<'EOF'
-[mongodb-org-7.0]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/7.0/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://pgp.mongodb.com/server-7.0.asc
-EOF
-    else
-        cat >/etc/yum.repos.d/mongodb-org-7.0.repo <<'EOF'
-[mongodb-org-7.0]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/8/mongodb-org/7.0/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://pgp.mongodb.com/server-7.0.asc
-EOF
+    #-------------------------------------------------------------------------------
+    # MongoDB (update to newer MongoDB repository, e.g., 6.0)
+    #-------------------------------------------------------------------------------
+    if check_yes_no 'curl -s https://raw.githubusercontent.com/REPLACE/mypost/master/mongodb-org-6.0.repo -o /etc/yum.repos.d/mongodb-org-6.0.repo'; then
+        check_yes_no 'dnf -q -y install mongodb-org'
+        check_yes_no 'systemctl enable mongod --now'
+        # Disable transparent hugepages (if needed by MongoDB)
+        echo 'echo "never" > /sys/kernel/mm/transparent_hugepage/enabled' >> /etc/rc.local
+        echo 'echo "never" > /sys/kernel/mm/transparent_hugepage/defrag' >> /etc/rc.local
+        check_yes_no 'chmod +x /etc/rc.d/rc.local'
+        echo "To disable monitoring reminder in MongoDB shell: db.disableFreeMonitoring()"
     fi
-
-    check_yes_no 'dnf -q -y install mongodb-org'
-    check_yes_no 'systemctl enable mongod --now'
-
-    # Disable Transparent Huge Pages (простая реализация)
-    echo 'echo never > /sys/kernel/mm/transparent_hugepage/enabled' >> /etc/rc.d/rc.local
-    echo 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'  >> /etc/rc.d/rc.local
-    chmod +x /etc/rc.d/rc.local
-
-    echo "[MongoDB] Репозиторий добавлен и служба запущена."
-fi
         
     #-------------------------------------------------------------------------------
     # FAIL2BAN
