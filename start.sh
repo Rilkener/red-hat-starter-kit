@@ -126,7 +126,7 @@ if [ "$(whoami)" = root ]; then
 fi
 
 # Fetch configuration files to set up shell and editors
-check_yes_no 'curl -s https://raw.githubusercontent.com/REPLACE/mypost/master/.bashrc -o ~/.bashrc'
+check_yes_no 'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.bashrc -o ~/.bashrc'
 check_yes_no 'curl -s https://raw.githubusercontent.com/REPLACE/mypost/master/.ctags -o ~/.ctags'
 check_yes_no 'curl -s https://raw.githubusercontent.com/REPLACE/mypost/master/.tern-project -o ~/.tern-project'
 check_yes_no 'curl -s https://raw.githubusercontent.com/REPLACE/mypost/master/.tmux.conf -o ~/.tmux.conf'
