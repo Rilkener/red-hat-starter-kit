@@ -23,6 +23,18 @@ if [ "$(whoami)" = root ]; then
   check_yes_no 'systemctl enable iptables --now'
 
   #-------------------------------------------------------------------------------
+  # DISABLE IPV6 (via sysctl)
+  #-------------------------------------------------------------------------------
+  if check_yes_no 'Disable IPv6 via sysctl?'; then
+    cat >/etc/sysctl.d/99-disable-ipv6.conf <<'EOF'
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF
+    sysctl --system
+  fi
+
+  #-------------------------------------------------------------------------------
   # REPOSITORIES (EPEL and Remi)
   #-------------------------------------------------------------------------------
   check_yes_no 'dnf -q -y install epel-release'
@@ -84,6 +96,20 @@ if [ "$(whoami)" = root ]; then
   fi
 
   #-------------------------------------------------------------------------------
+  # SYSTEMD-JOURNAL LOG SIZE LIMITS
+  #-------------------------------------------------------------------------------
+  if check_yes_no 'Limit systemd-journald log size?'; then
+    mkdir -p /etc/systemd/journald.conf.d
+    cat >/etc/systemd/journald.conf.d/limit-size.conf <<'EOF'
+[Journal]
+SystemMaxUse=100M
+SystemMaxFileSize=20M
+MaxRetentionSec=1month
+EOF
+    systemctl restart systemd-journald
+  fi
+
+  #-------------------------------------------------------------------------------
   # DEVELOPMENT TOOLS
   #-------------------------------------------------------------------------------
   check_yes_no 'dnf -q -y groupinstall "Development Tools"'
@@ -100,7 +126,7 @@ if [ "$(whoami)" = root ]; then
   #---------------------------------------
   # Neovim (последняя версия с GitHub)
   #---------------------------------------
-  if check_yes_no 'echo "Установить последнюю версию Neovim из GitHub?"'; then
+  if check_yes_no 'Установить последнюю версию Neovim из GitHub?'; then
     cd /usr/local/bin
 
     echo "[+] Скачиваю Neovim AppImage..."
