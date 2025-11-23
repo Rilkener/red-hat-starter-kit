@@ -11,8 +11,10 @@ check_yes_no() {
 }
 
 if [ "$(whoami)" = root ]; then
-  # Update system packages
-  check_yes_no 'dnf -y upgrade --refresh' # use dnf instead of yum
+  #-------------------------------------------------------------------------------
+  # UPDATE
+  #-------------------------------------------------------------------------------
+  check_yes_no 'dnf -y upgrade --refresh'
   check_yes_no 'dnf -q -y install net-tools'
 
   #-------------------------------------------------------------------------------
@@ -21,6 +23,19 @@ if [ "$(whoami)" = root ]; then
   check_yes_no 'dnf -q -y remove firewalld'
   check_yes_no 'dnf -q -y install iptables-services iptables-utils'
   check_yes_no 'systemctl enable iptables --now'
+
+  #-------------------------------------------------------------------------------
+  # SELINUX (disable)
+  #-------------------------------------------------------------------------------
+  if check_yes_no \
+'Disable SELinux (setenforce 0 now and set SELINUX=disabled in config)?'; then
+    if command -v setenforce &>/dev/null; then
+      setenforce 0 || true
+    fi
+    if [ -f /etc/selinux/config ]; then
+      sed -i 's/^SELINUX=.*/SELINUX=disabled/' /etc/selinux/config
+    fi
+  fi
 
   #-------------------------------------------------------------------------------
   # DISABLE IPV6 (via sysctl)
@@ -39,7 +54,8 @@ EOF
   #-------------------------------------------------------------------------------
   check_yes_no 'dnf -q -y install epel-release'
   # Use Remi repo appropriate for the OS version (e.g. 9 or 8)
-  check_yes_no 'dnf -q -y install http://rpms.remirepo.net/enterprise/remi-release-9.rpm'
+  check_yes_no \
+'dnf -q -y install http://rpms.remirepo.net/enterprise/remi-release-9.rpm'
 
   #-------------------------------------------------------------------------------
   # TIME SYNC (Chrony)
@@ -50,7 +66,7 @@ EOF
   check_yes_no 'systemctl start chronyd'
 
   #-------------------------------------------------------------------------------
-  # Python 3 (already default on Alma/Rocky, ensure installed)
+  # Python 3
   #-------------------------------------------------------------------------------
   check_yes_no 'dnf -q -y install python3 python3-devel python3-pip'
 
@@ -60,8 +76,10 @@ EOF
   if check_yes_no 'dnf -q -y install nginx'; then
     check_yes_no 'systemctl enable nginx'
     check_yes_no 'systemctl start nginx'
-    check_yes_no 'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT'
-    check_yes_no 'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT'
+    check_yes_no \
+'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT'
+    check_yes_no \
+'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT'
     check_yes_no 'service iptables save'
   fi
 
@@ -75,16 +93,20 @@ EOF
   fi
 
   #-------------------------------------------------------------------------------
-  # MongoDB (update to newer MongoDB repository, e.g., 6.0)
+  # MongoDB (6.0 repo)
   #-------------------------------------------------------------------------------
-  if check_yes_no 'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/mongodb-org-6.0.repo -o /etc/yum.repos.d/mongodb-org-6.0.repo'; then
+  if check_yes_no \
+'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/mongodb-org-6.0.repo -o /etc/yum.repos.d/mongodb-org-6.0.repo'; then
     check_yes_no 'dnf -q -y install mongodb-org'
     check_yes_no 'systemctl enable mongod --now'
     # Disable transparent hugepages (if needed by MongoDB)
-    echo 'echo "never" > /sys/kernel/mm/transparent_hugepage/enabled' >>/etc/rc.local
-    echo 'echo "never" > /sys/kernel/mm/transparent_hugepage/defrag' >>/etc/rc.local
+    echo 'echo "never" > /sys/kernel/mm/transparent_hugepage/enabled' \
+>>/etc/rc.local
+    echo 'echo "never" > /sys/kernel/mm/transparent_hugepage/defrag' \
+>>/etc/rc.local
     check_yes_no 'chmod +x /etc/rc.d/rc.local'
-    echo "To disable monitoring reminder in MongoDB shell: db.disableFreeMonitoring()"
+    echo \
+"To disable monitoring reminder in MongoDB shell: db.disableFreeMonitoring()"
   fi
 
   #-------------------------------------------------------------------------------
@@ -130,11 +152,11 @@ EOF
     cd /usr/local/bin
 
     echo "[+] Скачиваю Neovim AppImage..."
-    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage
+    curl -LO \
+https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage
 
     chmod +x nvim-linux-x86_64.appimage
 
-    # Переименовываем в nvim и vim
     ln -sf /usr/local/bin/nvim-linux-x86_64.appimage /usr/local/bin/nvim
     ln -sf /usr/local/bin/nvim-linux-x86_64.appimage /usr/local/bin/vim
 
@@ -144,7 +166,7 @@ EOF
   #-------------------------------------------------------------------------------
   # NEOVIM Integration
   #-------------------------------------------------------------------------------
-  check_yes_no 'dnf -q -y install python3-neovim' # Python support for Neovim (pynvim)
+  check_yes_no 'dnf -q -y install python3-neovim'
   check_yes_no 'npm install -g neovim'
 
   #-------------------------------------------------------------------------------
@@ -161,21 +183,27 @@ EOF
   check_yes_no 'dnf -q -y install lrzsz'
   check_yes_no 'dnf -q -y install mailx'
   check_yes_no 'pip3 install -q -U virtualenv'
-  # FZF (for Vim) and .gitignore plugin dependency:
   check_yes_no 'dnf -q -y install the_silver_searcher'
   check_yes_no 'pip3 install -q -U autopep8'
   check_yes_no 'pip3 install -q -U neovim'
-  # Remove unwanted default packages
   check_yes_no 'dnf -q -y remove cockpit'
 fi
 
-# Fetch configuration files to set up shell and editors
-check_yes_no 'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.bashrc -o ~/.bashrc'
-check_yes_no 'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.ctags -o ~/.ctags'
-check_yes_no 'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.tern-project -o ~/.tern-project'
-check_yes_no 'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.tmux.conf -o ~/.tmux.conf'
-check_yes_no 'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.pylintrc -o ~/.pylintrc'
-check_yes_no 'curl -fLo ~/.config/nvim/init.vim --create-dirs https://raw.githubusercontent.com/Rilkener/mypost/master/init.vim'
+#-------------------------------------------------------------------------------
+# DOTFILES / CONFIGS
+#-------------------------------------------------------------------------------
+check_yes_no \
+'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.bashrc -o ~/.bashrc'
+check_yes_no \
+'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.ctags -o ~/.ctags'
+check_yes_no \
+'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.tern-project -o ~/.tern-project'
+check_yes_no \
+'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.tmux.conf -o ~/.tmux.conf'
+check_yes_no \
+'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.pylintrc -o ~/.pylintrc'
+check_yes_no \
+'curl -fLo ~/.config/nvim/init.vim --create-dirs https://raw.githubusercontent.com/Rilkener/mypost/master/init.vim'
 
 #-------------------------------------------------------------------------------
 # Randomized colorful Bash prompt (optional)
@@ -188,16 +216,19 @@ END
 )
 if check_yes_no 'echo "Add color to .bashrc?"'; then
   echo "$BASHRC" >>~/.bashrc
-  #exec bash # (cannot source .bashrc in a non-interactive script)
 fi
 
-# Install vim-plug for Neovim
-check_yes_no 'curl -fLo ~/.local/share/nvim/site/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
+#-------------------------------------------------------------------------------
+# vim-plug for Neovim
+#-------------------------------------------------------------------------------
+check_yes_no \
+'curl -fLo ~/.local/share/nvim/site/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
 
+#-------------------------------------------------------------------------------
 # Python virtual environment for Neovim plugins and linters
+#-------------------------------------------------------------------------------
 if check_yes_no 'python3 -m venv env'; then
   check_yes_no 'echo ". env/bin/activate" >> ~/.bashrc'
-  # Activate the venv in this script context:
   . env/bin/activate
   check_yes_no 'pip install -q -U autopep8'
   check_yes_no 'pip install -q -U neovim'
@@ -205,16 +236,22 @@ if check_yes_no 'python3 -m venv env'; then
   check_yes_no 'pip install -q -U "python-lsp-server[all]"'
 fi
 
-# Enable true color in Vim (if MYCOLOR is set, some vimrc may use it)
+#-------------------------------------------------------------------------------
+# True color for Vim
+#-------------------------------------------------------------------------------
 check_yes_no 'echo "export MYCOLOR=24bit" >> ~/.bash_profile'
 
+#-------------------------------------------------------------------------------
 # Global ESLint configuration (optional)
-echo "Global ESLint setup (not needed for React projects, which have local config)."
+#-------------------------------------------------------------------------------
+echo \
+"Global ESLint setup (not needed for React projects, which have local config)."
 read -p "Configure global ESLint now? (y/n) " CONT
 if [ "$CONT" = "y" ]; then
   check_yes_no 'npm init -y'
   check_yes_no 'npm install eslint --save-dev'
-  echo "Choose 'To check syntax, find problems, and enforce code style' when prompted."
-  check_yes_no 'eslint --init'
-  check_yes_no 'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.eslintrc.js -o ~/.eslintrc.js'
+  echo \
+"Choose 'To check syntax, find problems, and enforce code style' when prompted."
+  check_yes_no \
+'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.eslintrc.js -o ~/.eslintrc.js'
 fi
