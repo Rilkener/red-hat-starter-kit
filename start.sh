@@ -28,29 +28,22 @@ if [ "$(whoami)" = root ]; then
   check_yes_no 'dnf -q -y install net-tools'
 
   #-------------------------------------------------------------------------------
-  # IPTABLES вместо firewalld + iptables-restore.service + "service iptables save"
+  # IPTABLES вместо firewalld + iptables-restore.service + service iptables save
   #-------------------------------------------------------------------------------
   check_yes_no 'dnf -q -y remove firewalld'
   check_yes_no 'dnf -q -y install iptables iptables-utils'
 
-  # Найдём реальный путь до iptables-restore (на всякий случай)
-  IPT_RESTORE_BIN="$(command -v iptables-restore || echo /usr/sbin/iptables-restore)"
+  IPT_RESTORE_BIN="$(command -v iptables-restore \
+    || echo /usr/sbin/iptables-restore)"
 
-  # Базовый конфиг правил, если его ещё нет
-  if [ ! -f /etc/sysconfig/iptables ]; then
-    cat >/etc/sysconfig/iptables <<'EOF'
-*filter
-:INPUT ACCEPT [0:0]
-:FORWARD ACCEPT [0:0]
-:OUTPUT ACCEPT [0:0]
-COMMIT
-EOF
-  fi
+  # Тянем шаблон ruleset из репозитория
+  check_yes_no \
+'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/iptables.sysconfig -o /etc/sysconfig/iptables'
 
-  # systemd-юнит для iptables-restore (минимальный, но живучий)
+  # Юнит: если файл пустой – ничего не делаем, чтобы не падать
   cat >/etc/systemd/system/iptables-restore.service <<EOF
 [Unit]
-Description=Restore iptables firewall rules
+Description=Restore iptables firewall rules (skip on empty config)
 DefaultDependencies=no
 Before=network-pre.target
 Wants=network-pre.target
@@ -58,8 +51,10 @@ Conflicts=shutdown.target
 
 [Service]
 Type=oneshot
-ExecStart=$IPT_RESTORE_BIN /etc/sysconfig/iptables
-ExecReload=$IPT_RESTORE_BIN /etc/sysconfig/iptables
+ExecStart=/bin/sh -c '[ -s /etc/sysconfig/iptables ] && \
+  $IPT_RESTORE_BIN /etc/sysconfig/iptables || exit 0'
+ExecReload=/bin/sh -c '[ -s /etc/sysconfig/iptables ] && \
+  $IPT_RESTORE_BIN /etc/sysconfig/iptables || exit 0'
 RemainAfterExit=yes
 
 [Install]
@@ -67,11 +62,9 @@ WantedBy=multi-user.target
 EOF
 
   check_yes_no 'systemctl daemon-reload'
-  # Даже если первый запуск не удался, юнит всё равно включится в автозагрузку
-  check_yes_no 'systemctl enable iptables-restore.service || true'
-  check_yes_no 'systemctl start iptables-restore.service || true'
+  check_yes_no 'systemctl enable iptables-restore.service --now'
 
-  # /etc/init.d/iptables из твоего репо для "service iptables save"
+  # Скрипт для "service iptables save"
   check_yes_no \
 'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/iptables -o /etc/init.d/iptables'
   check_yes_no 'chmod +x /etc/init.d/iptables'
@@ -131,9 +124,7 @@ EOF
 'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT'
     check_yes_no \
 'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT'
-    # Сохраняем текущие правила, чтобы поднялись после ребута
-    check_yes_no 'iptables-save >/etc/sysconfig/iptables'
-    check_yes_no 'systemctl reload iptables-restore.service || true'
+    check_yes_no 'service iptables save'
   fi
 
   #-------------------------------------------------------------------------------
@@ -153,7 +144,6 @@ EOF
     check_yes_no 'dnf -q -y install mongodb-org'
     check_yes_no 'systemctl enable mongod --now'
 
-    # Disable transparent hugepages через rc.local
     if [ ! -f /etc/rc.d/rc.local ]; then
       touch /etc/rc.d/rc.local
     fi
@@ -246,7 +236,7 @@ https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appi
 fi
 
 #-------------------------------------------------------------------------------
-# DOTFILES / CONFIGS (для текущего пользователя)
+# DOTFILES / CONFIGS (user)
 #-------------------------------------------------------------------------------
 check_yes_no \
 'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.bashrc -o ~/.bashrc'
