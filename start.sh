@@ -28,10 +28,13 @@ if [ "$(whoami)" = root ]; then
   check_yes_no 'dnf -q -y install net-tools'
 
   #-------------------------------------------------------------------------------
-  # IPTABLES вместо firewalld + свой сервис + "service iptables save"
+  # IPTABLES вместо firewalld + iptables-restore.service + "service iptables save"
   #-------------------------------------------------------------------------------
   check_yes_no 'dnf -q -y remove firewalld'
   check_yes_no 'dnf -q -y install iptables iptables-utils'
+
+  # Найдём реальный путь до iptables-restore (на всякий случай)
+  IPT_RESTORE_BIN="$(command -v iptables-restore || echo /usr/sbin/iptables-restore)"
 
   # Базовый конфиг правил, если его ещё нет
   if [ ! -f /etc/sysconfig/iptables ]; then
@@ -44,8 +47,8 @@ COMMIT
 EOF
   fi
 
-  # systemd-юнит для iptables-restore
-  cat >/etc/systemd/system/iptables-restore.service <<'EOF'
+  # systemd-юнит для iptables-restore (минимальный, но живучий)
+  cat >/etc/systemd/system/iptables-restore.service <<EOF
 [Unit]
 Description=Restore iptables firewall rules
 DefaultDependencies=no
@@ -55,8 +58,8 @@ Conflicts=shutdown.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/sbin/iptables-restore /etc/sysconfig/iptables
-ExecReload=/usr/sbin/iptables-restore /etc/sysconfig/iptables
+ExecStart=$IPT_RESTORE_BIN /etc/sysconfig/iptables
+ExecReload=$IPT_RESTORE_BIN /etc/sysconfig/iptables
 RemainAfterExit=yes
 
 [Install]
@@ -64,9 +67,11 @@ WantedBy=multi-user.target
 EOF
 
   check_yes_no 'systemctl daemon-reload'
-  check_yes_no 'systemctl enable iptables-restore.service --now'
+  # Даже если первый запуск не удался, юнит всё равно включится в автозагрузку
+  check_yes_no 'systemctl enable iptables-restore.service || true'
+  check_yes_no 'systemctl start iptables-restore.service || true'
 
-  # Компактный /etc/init.d/iptables из твоего репозитория
+  # /etc/init.d/iptables из твоего репо для "service iptables save"
   check_yes_no \
 'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/iptables -o /etc/init.d/iptables'
   check_yes_no 'chmod +x /etc/init.d/iptables'
@@ -128,7 +133,7 @@ EOF
 'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT'
     # Сохраняем текущие правила, чтобы поднялись после ребута
     check_yes_no 'iptables-save >/etc/sysconfig/iptables'
-    check_yes_no 'systemctl reload iptables-restore.service'
+    check_yes_no 'systemctl reload iptables-restore.service || true'
   fi
 
   #-------------------------------------------------------------------------------
@@ -241,7 +246,7 @@ https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appi
 fi
 
 #-------------------------------------------------------------------------------
-# DOTFILES / CONFIGS (для текущего пользователя, не обязательно root)
+# DOTFILES / CONFIGS (для текущего пользователя)
 #-------------------------------------------------------------------------------
 check_yes_no \
 'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.bashrc -o ~/.bashrc'
