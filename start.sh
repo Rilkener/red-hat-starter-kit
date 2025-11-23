@@ -28,12 +28,12 @@ if [ "$(whoami)" = root ]; then
   check_yes_no 'dnf -q -y install net-tools'
 
   #-------------------------------------------------------------------------------
-  # IPTABLES (replace firewalld with iptables service)
+  # IPTABLES вместо firewalld + свой сервис + "service iptables save"
   #-------------------------------------------------------------------------------
   check_yes_no 'dnf -q -y remove firewalld'
-  check_yes_no 'dnf -q -y install iptables-services iptables-utils'
+  check_yes_no 'dnf -q -y install iptables iptables-utils'
 
-  # минимальный конфиг, чтобы iptables.service не падал
+  # Базовый конфиг правил, если его ещё нет
   if [ ! -f /etc/sysconfig/iptables ]; then
     cat >/etc/sysconfig/iptables <<'EOF'
 *filter
@@ -44,7 +44,32 @@ COMMIT
 EOF
   fi
 
-  check_yes_no 'systemctl enable iptables --now'
+  # systemd-юнит для iptables-restore
+  cat >/etc/systemd/system/iptables-restore.service <<'EOF'
+[Unit]
+Description=Restore iptables firewall rules
+DefaultDependencies=no
+Before=network-pre.target
+Wants=network-pre.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/iptables-restore /etc/sysconfig/iptables
+ExecReload=/usr/sbin/iptables-restore /etc/sysconfig/iptables
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  check_yes_no 'systemctl daemon-reload'
+  check_yes_no 'systemctl enable iptables-restore.service --now'
+
+  # Компактный /etc/init.d/iptables из твоего репозитория
+  check_yes_no \
+'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/iptables -o /etc/init.d/iptables'
+  check_yes_no 'chmod +x /etc/init.d/iptables'
 
   #-------------------------------------------------------------------------------
   # SELINUX (disable)
@@ -101,7 +126,9 @@ EOF
 'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT'
     check_yes_no \
 'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT'
-    check_yes_no 'service iptables save'
+    # Сохраняем текущие правила, чтобы поднялись после ребута
+    check_yes_no 'iptables-save >/etc/sysconfig/iptables'
+    check_yes_no 'systemctl reload iptables-restore.service'
   fi
 
   #-------------------------------------------------------------------------------
@@ -121,15 +148,18 @@ EOF
     check_yes_no 'dnf -q -y install mongodb-org'
     check_yes_no 'systemctl enable mongod --now'
 
-    # Disable transparent hugepages
+    # Disable transparent hugepages через rc.local
     if [ ! -f /etc/rc.d/rc.local ]; then
       touch /etc/rc.d/rc.local
-      chmod +x /etc/rc.d/rc.local
     fi
-    cat >>/etc/rc.d/rc.local <<'EOF'
+    chmod +x /etc/rc.d/rc.local
+    if ! grep -q 'transparent_hugepage/enabled' /etc/rc.d/rc.local; then
+      cat >>/etc/rc.d/rc.local <<'EOF'
 echo "never" > /sys/kernel/mm/transparent_hugepage/enabled
 echo "never" > /sys/kernel/mm/transparent_hugepage/defrag
 EOF
+    fi
+
     echo \
 "To disable monitoring reminder in MongoDB shell: db.disableFreeMonitoring()"
   fi
@@ -175,11 +205,9 @@ EOF
   #---------------------------------------
   if confirm 'Установить последнюю версию Neovim из GitHub?'; then
     cd /usr/local/bin
-
     echo "[+] Скачиваю Neovim AppImage..."
     curl -LO \
 https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage
-
     chmod +x nvim-linux-x86_64.appimage
     ln -sf /usr/local/bin/nvim-linux-x86_64.appimage /usr/local/bin/nvim
     ln -sf /usr/local/bin/nvim-linux-x86_64.appimage /usr/local/bin/vim
@@ -213,7 +241,7 @@ https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appi
 fi
 
 #-------------------------------------------------------------------------------
-# DOTFILES / CONFIGS
+# DOTFILES / CONFIGS (для текущего пользователя, не обязательно root)
 #-------------------------------------------------------------------------------
 check_yes_no \
 'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.bashrc -o ~/.bashrc'
