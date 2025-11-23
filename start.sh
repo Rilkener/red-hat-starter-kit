@@ -10,6 +10,16 @@ check_yes_no() {
   done
 }
 
+confirm() {
+  echo "$1"
+  local ans
+  PS3="> "
+  select ans in Yes No; do
+    [[ $ans == Yes ]] && return 0
+    [[ $ans == No ]] && return 1
+  done
+}
+
 if [ "$(whoami)" = root ]; then
   #-------------------------------------------------------------------------------
   # UPDATE
@@ -22,12 +32,24 @@ if [ "$(whoami)" = root ]; then
   #-------------------------------------------------------------------------------
   check_yes_no 'dnf -q -y remove firewalld'
   check_yes_no 'dnf -q -y install iptables-services iptables-utils'
+
+  # минимальный конфиг, чтобы iptables.service не падал
+  if [ ! -f /etc/sysconfig/iptables ]; then
+    cat >/etc/sysconfig/iptables <<'EOF'
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+COMMIT
+EOF
+  fi
+
   check_yes_no 'systemctl enable iptables --now'
 
   #-------------------------------------------------------------------------------
   # SELINUX (disable)
   #-------------------------------------------------------------------------------
-  if check_yes_no \
+  if confirm \
 'Disable SELinux (setenforce 0 now and set SELINUX=disabled in config)?'; then
     if command -v setenforce &>/dev/null; then
       setenforce 0 || true
@@ -40,7 +62,7 @@ if [ "$(whoami)" = root ]; then
   #-------------------------------------------------------------------------------
   # DISABLE IPV6 (via sysctl)
   #-------------------------------------------------------------------------------
-  if check_yes_no 'Disable IPv6 via sysctl?'; then
+  if confirm 'Disable IPv6 via sysctl?'; then
     cat >/etc/sysctl.d/99-disable-ipv6.conf <<'EOF'
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
@@ -53,7 +75,6 @@ EOF
   # REPOSITORIES (EPEL and Remi)
   #-------------------------------------------------------------------------------
   check_yes_no 'dnf -q -y install epel-release'
-  # Use Remi repo appropriate for the OS version (e.g. 9 or 8)
   check_yes_no \
 'dnf -q -y install http://rpms.remirepo.net/enterprise/remi-release-9.rpm'
 
@@ -99,12 +120,16 @@ EOF
 'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/mongodb-org-6.0.repo -o /etc/yum.repos.d/mongodb-org-6.0.repo'; then
     check_yes_no 'dnf -q -y install mongodb-org'
     check_yes_no 'systemctl enable mongod --now'
-    # Disable transparent hugepages (if needed by MongoDB)
-    echo 'echo "never" > /sys/kernel/mm/transparent_hugepage/enabled' \
->>/etc/rc.local
-    echo 'echo "never" > /sys/kernel/mm/transparent_hugepage/defrag' \
->>/etc/rc.local
-    check_yes_no 'chmod +x /etc/rc.d/rc.local'
+
+    # Disable transparent hugepages
+    if [ ! -f /etc/rc.d/rc.local ]; then
+      touch /etc/rc.d/rc.local
+      chmod +x /etc/rc.d/rc.local
+    fi
+    cat >>/etc/rc.d/rc.local <<'EOF'
+echo "never" > /sys/kernel/mm/transparent_hugepage/enabled
+echo "never" > /sys/kernel/mm/transparent_hugepage/defrag
+EOF
     echo \
 "To disable monitoring reminder in MongoDB shell: db.disableFreeMonitoring()"
   fi
@@ -120,7 +145,7 @@ EOF
   #-------------------------------------------------------------------------------
   # SYSTEMD-JOURNAL LOG SIZE LIMITS
   #-------------------------------------------------------------------------------
-  if check_yes_no 'Limit systemd-journald log size?'; then
+  if confirm 'Limit systemd-journald log size?'; then
     mkdir -p /etc/systemd/journald.conf.d
     cat >/etc/systemd/journald.conf.d/limit-size.conf <<'EOF'
 [Journal]
@@ -148,7 +173,7 @@ EOF
   #---------------------------------------
   # Neovim (последняя версия с GitHub)
   #---------------------------------------
-  if check_yes_no 'Установить последнюю версию Neovim из GitHub?'; then
+  if confirm 'Установить последнюю версию Neovim из GitHub?'; then
     cd /usr/local/bin
 
     echo "[+] Скачиваю Neovim AppImage..."
@@ -156,10 +181,8 @@ EOF
 https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage
 
     chmod +x nvim-linux-x86_64.appimage
-
     ln -sf /usr/local/bin/nvim-linux-x86_64.appimage /usr/local/bin/nvim
     ln -sf /usr/local/bin/nvim-linux-x86_64.appimage /usr/local/bin/vim
-
     echo "[+] Neovim установлен глобально как 'nvim' и 'vim'"
   fi
 
@@ -214,7 +237,7 @@ BASHRC=$(
 export PS1='\[\033[01;${R[0]}m\]\u\[\033[01;${R[1]}m\]@\[\033[01;${R[2]}m\]\h \[\033[01;${R[3]}m\]\w \[\033[01;${R[4]}m\]$ \[\033[00m\]'
 END
 )
-if check_yes_no 'echo "Add color to .bashrc?"'; then
+if confirm 'Add color to .bashrc?'; then
   echo "$BASHRC" >>~/.bashrc
 fi
 
