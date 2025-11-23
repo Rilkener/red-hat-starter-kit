@@ -1,0 +1,43 @@
+#!/bin/bash
+# Simple compatibility script for "service iptables save"
+
+IPFILE=/etc/sysconfig/iptables
+
+case "$1" in
+  save)
+    if command -v iptables-save >/dev/null 2>&1; then
+      iptables-save >"$IPFILE"
+      echo "Saved iptables rules to $IPFILE"
+      exit 0
+    else
+      echo "iptables-save not found" >&2
+      exit 1
+    fi
+    ;;
+  start)
+    if [ -r "$IPFILE" ]; then
+      iptables-restore "$IPFILE"
+      exit 0
+    else
+      echo "No rules file: $IPFILE" >&2
+      exit 1
+    fi
+    ;;
+  restart|reload)
+    if systemctl list-unit-files | grep -q '^iptables-restore.service'; then
+      systemctl reload iptables-restore.service \
+        || iptables-restore "$IPFILE"
+    else
+      iptables-restore "$IPFILE"
+    fi
+    exit 0
+    ;;
+  status)
+    iptables -L -n
+    exit 0
+    ;;
+  *)
+    echo "Usage: $0 {save|start|restart|reload|status}"
+    exit 1
+    ;;
+esac
