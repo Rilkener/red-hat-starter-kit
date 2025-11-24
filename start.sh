@@ -28,46 +28,37 @@ if [ "$(whoami)" = root ]; then
   check_yes_no 'dnf -q -y install net-tools'
 
   #-------------------------------------------------------------------------------
-  # IPTABLES вместо firewalld + iptables-restore.service + service iptables save
+  # IPTABLES-SERVICES вместо firewalld
   #-------------------------------------------------------------------------------
   check_yes_no 'dnf -q -y remove firewalld'
-  check_yes_no 'dnf -q -y install iptables iptables-utils'
+  check_yes_no 'dnf -q -y install iptables-services'
 
-  IPT_RESTORE_BIN="$(command -v iptables-restore \
-    || echo /usr/sbin/iptables-restore)"
+  # Здесь НОВАЯ система, поэтому конфиг iptables просто перезатираем
+  cat >/etc/sysconfig/iptables <<'EOF'
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
 
-  # Тянем шаблон ruleset из репозитория
-  check_yes_no \
-'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/iptables.sysconfig -o /etc/sysconfig/iptables'
+# loopback
+-A INPUT -i lo -j ACCEPT
 
-  # Юнит: если файл пустой – ничего не делаем, чтобы не падать
-  cat >/etc/systemd/system/iptables-restore.service <<EOF
-[Unit]
-Description=Restore iptables firewall rules (skip on empty config)
-DefaultDependencies=no
-Before=network-pre.target
-Wants=network-pre.target
-Conflicts=shutdown.target
+# ICMP (ping)
+-A INPUT -p icmp -j ACCEPT
 
-[Service]
-Type=oneshot
-ExecStart=/bin/sh -c '[ -s /etc/sysconfig/iptables ] && \
-  $IPT_RESTORE_BIN /etc/sysconfig/iptables || exit 0'
-ExecReload=/bin/sh -c '[ -s /etc/sysconfig/iptables ] && \
-  $IPT_RESTORE_BIN /etc/sysconfig/iptables || exit 0'
-RemainAfterExit=yes
+# Разрешаем уже установленные и связанные соединения
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
 
-[Install]
-WantedBy=multi-user.target
+# SSH
+-A INPUT -p tcp -m state --state NEW --dport 22 -j ACCEPT
+
+# Остальное — рубим
+-A INPUT -j REJECT --reject-with icmp-host-prohibited
+
+COMMIT
 EOF
 
-  check_yes_no 'systemctl daemon-reload'
-  check_yes_no 'systemctl enable iptables-restore.service --now'
-
-  # Скрипт для "service iptables save"
-  check_yes_no \
-'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/iptables -o /etc/init.d/iptables'
-  check_yes_no 'chmod +x /etc/init.d/iptables'
+  check_yes_no 'systemctl enable iptables --now'
 
   #-------------------------------------------------------------------------------
   # SELINUX (disable)
@@ -120,10 +111,8 @@ EOF
   if check_yes_no 'dnf -q -y install nginx'; then
     check_yes_no 'systemctl enable nginx'
     check_yes_no 'systemctl start nginx'
-    check_yes_no \
-'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT'
-    check_yes_no \
-'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT'
+    check_yes_no 'iptables -I INPUT -p tcp --dport 80 -j ACCEPT'
+    check_yes_no 'iptables -I INPUT -p tcp --dport 443 -j ACCEPT'
     check_yes_no 'service iptables save'
   fi
 
