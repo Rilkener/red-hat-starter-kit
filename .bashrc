@@ -12,6 +12,12 @@ export VISUAL=nvim
 # Разрешить Ctrl+S/Ctrl+Q только в терминале
 [[ -t 0 ]] && stty -ixon
 
+# Нормальный TERM в интерактивной сессии SecureCRT,
+# но не трогаем TERM внутри tmux
+if [[ -z "$TMUX" && "$TERM" == "xterm" ]]; then
+  export TERM=xterm-256color
+fi
+
 # 4) История: больше, без дублей, автосинхронизация между сессиями
 export HISTSIZE=50000
 export HISTFILESIZE=50000
@@ -47,6 +53,7 @@ shopt -s globstar           # ** рекурсивные глоб-шаблоны
 # 7) Алиасы
 alias dusk='du -ahd1 | sort -rh | head -11'
 alias vim='nvim'
+
 
 # 8) fzf с уважением .gitignore и приятной темой
 # Лучше задавать опции через переменную, а не заменять саму команду alias’ом
