@@ -230,13 +230,13 @@ fi
 check_yes_no \
 'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.bashrc -o ~/.bashrc'
 check_yes_no \
-'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.ctags -o ~/.ctags'
+'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.ctags -o ~/.ctags'
 check_yes_no \
-'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.tern-project -o ~/.tern-project'
+'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.tern-project -o ~/.tern-project'
 check_yes_no \
-'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.tmux.conf -o ~/.tmux.conf'
+'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.tmux.conf -o ~/.tmux.conf'
 check_yes_no \
-'curl -s https://raw.githubusercontent.com/Rilkener/mypost/master/.pylintrc -o ~/.pylintrc'
+'curl -s https://raw.githubusercontent.com/Rilkener/red-hat-starter-kit/refs/heads/main/.pylintrc -o ~/.pylintrc'
 check_yes_no \
 'curl -fLo ~/.config/nvim/init.vim --create-dirs https://raw.githubusercontent.com/Rilkener/mypost/master/init.vim'
 
