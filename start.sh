@@ -108,8 +108,16 @@ EOF
   #-------------------------------------------------------------------------------
   # REPOSITORIES (EPEL)
   #-------------------------------------------------------------------------------
-  check_yes_no \
+  # Keep the installed provider, including AlmaLinux's AltArch EPEL package.
+  if rpm -q --whatprovides epel-release >/dev/null 2>&1; then
+    echo 'EPEL release package is already installed; skipping installation.'
+  elif [[ $ID == almalinux ]]; then
+    # AlmaLinux repositories select the EPEL package for this architecture.
+    check_yes_no 'dnf -q -y install epel-release'
+  else
+    check_yes_no \
 "dnf -q -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-${RHEL_MAJOR}.noarch.rpm"
+  fi
 
   #-------------------------------------------------------------------------------
   # TIME SYNC (Chrony)
